@@ -6,7 +6,8 @@
     "dev": "next dev --hostname 0.0.0.0",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "admin:create-users": "node scripts/create-daesan-admins.mjs"
   },
   "dependencies": {
     "@notionhq/client": "^5.26.0",
