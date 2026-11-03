@@ -1,38 +1,20 @@
-import { createClient } from '@supabase/supabase-js';
-import { compareTeamRows, type BaselineTeamRow, type ParsedTeamRow } from '@/lib/team-import';
+import { compareTeamRows, type ParsedTeamRow } from '@/lib/team-import';
+import { getAdminSession } from '@/lib/auth/admin';
+import { loadTeamBaseline } from '@/lib/server/team-baseline';
 
 export const runtime = 'nodejs';
 
-type BaselineDbRow = {
-  member_id: string; team_id: string; team_name: string; normalized_team: string; source_key: string;
-  source_row_number: number; member_name: string | null; normalized_member: string | null;
-  contact: string | null; normalized_phone: string | null; category: string | null;
-  company_name: string | null; normalized_company: string | null;
-  commission_rate: number | null; power_usage_kw: number | null;
-};
-
-const maskContact = (value: string | null) => {
+const maskContact = (value: string) => {
   if (!value) return '-';
   const digits = value.replace(/\D/g, '');
   if (digits.length < 7) return '***';
   return `${digits.slice(0, 3)}-****-${digits.slice(-4)}`;
 };
 
-async function loadBaseline() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const compareSecret = process.env.TEAM_COMPARE_SECRET;
-  if (!url || !anonKey || !compareSecret) throw new Error('missing_config');
-
-  const supabase = createClient(url, anonKey, { db: { schema: 'hrmm' }, auth: { persistSession: false, autoRefreshToken: false } });
-  const { data, error } = await supabase.rpc('get_team_baseline', { p_secret: compareSecret });
-  if (error) throw new Error('baseline_unavailable');
-  return (data || []) as BaselineDbRow[];
-}
-
 export async function GET() {
   try {
-    const baseline = await loadBaseline();
+    if (!await getAdminSession()) return Response.json({ error: '관리자 로그인이 필요합니다.' }, { status: 401 });
+    const baseline = await loadTeamBaseline();
     const grouped = new Map<string, {
       id: string; teamName: string; categories: Set<string>; members: Array<{
         id: string; name: string; contact: string; category: string; companyName: string;
@@ -41,21 +23,21 @@ export async function GET() {
     }>();
 
     for (const row of baseline) {
-      const team = grouped.get(row.team_id) || {
-        id: row.team_id, teamName: row.team_name, categories: new Set<string>(), members: [],
+      const team = grouped.get(row.teamId) || {
+        id: row.teamId, teamName: row.teamName, categories: new Set<string>(), members: [],
       };
       if (row.category) team.categories.add(row.category);
       team.members.push({
-        id: row.member_id,
-        name: row.member_name || '-',
+        id: row.id,
+        name: row.memberName || '-',
         contact: maskContact(row.contact),
         category: row.category || '-',
-        companyName: row.company_name || '-',
-        commissionRate: row.commission_rate,
-        powerUsageKw: row.power_usage_kw,
-        needsReview: !row.member_name?.trim() || !row.contact?.trim() || !row.category?.trim(),
+        companyName: row.companyName || '-',
+        commissionRate: row.commissionRate,
+        powerUsageKw: row.powerUsageKw,
+        needsReview: !row.memberName.trim() || !row.contact.trim() || !row.category.trim(),
       });
-      grouped.set(row.team_id, team);
+      grouped.set(row.teamId, team);
     }
 
     const teams = Array.from(grouped.values()).map((team) => ({
@@ -83,6 +65,7 @@ const isParsedRow = (value: unknown): value is ParsedTeamRow => {
 
 export async function POST(request: Request) {
   try {
+    if (!await getAdminSession()) return Response.json({ error: '관리자 로그인이 필요합니다.' }, { status: 401 });
     const contentLength = Number(request.headers.get('content-length') || 0);
     if (contentLength > 1_500_000) return Response.json({ error: '비교 요청이 너무 큽니다.' }, { status: 413 });
     const body = await request.json() as { rows?: unknown };
@@ -90,14 +73,7 @@ export async function POST(request: Request) {
       return Response.json({ error: '팀리스트 데이터 형식이 올바르지 않습니다.' }, { status: 400 });
     }
 
-    const data = await loadBaseline();
-    const baseline = data.map<BaselineTeamRow>((row) => ({
-      id: row.member_id, teamId: row.team_id, sourceKey: row.source_key, rowNumber: row.source_row_number,
-      teamName: row.team_name, normalizedTeam: row.normalized_team, memberName: row.member_name || '',
-      normalizedMember: row.normalized_member || '', contact: row.contact || '', normalizedPhone: row.normalized_phone || '',
-      category: row.category || '', companyName: row.company_name || '', normalizedCompany: row.normalized_company || '',
-      commissionRate: row.commission_rate, powerUsageKw: row.power_usage_kw,
-    }));
+    const baseline = await loadTeamBaseline();
     const compared = compareTeamRows(body.rows, baseline);
     const teamCount = new Set(baseline.map((row) => row.teamId)).size;
     return Response.json({ rows: compared, baseline: { teams: teamCount, members: baseline.length } }, {

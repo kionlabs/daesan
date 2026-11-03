@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PageHeader, StatusBadge } from '@/components/erp-ui';
 import { changedFields, parseTeamWorkbook, type ComparedTeamRow, type ImportStatus } from '@/lib/team-import';
 
@@ -38,19 +38,25 @@ export default function TeamsPage() {
   const [teamSearch, setTeamSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [applying, setApplying] = useState(false);
+
+  const loadDbTeams = useCallback(async () => {
+    setDbLoading(true); setDbError(null);
+    try {
+      const response = await fetch('/api/teams/compare', { cache: 'no-store' });
+      const result = await response.json() as { teams?: DbTeam[]; summary?: typeof dbSummary; error?: string };
+      if (!response.ok || !result.teams || !result.summary) throw new Error(result.error || '팀 목록을 불러오지 못했습니다.');
+      setDbTeams(result.teams); setDbSummary(result.summary);
+    } catch (caught) {
+      setDbError(caught instanceof Error ? caught.message : '팀 목록을 불러오지 못했습니다.');
+    } finally { setDbLoading(false); }
+  }, []);
 
   useEffect(() => {
-    let active = true;
-    fetch('/api/teams/compare', { cache: 'no-store' })
-      .then(async (response) => {
-        const result = await response.json() as { teams?: DbTeam[]; summary?: typeof dbSummary; error?: string };
-        if (!response.ok || !result.teams || !result.summary) throw new Error(result.error || '팀 목록을 불러오지 못했습니다.');
-        if (active) { setDbTeams(result.teams); setDbSummary(result.summary); }
-      })
-      .catch((caught) => active && setDbError(caught instanceof Error ? caught.message : '팀 목록을 불러오지 못했습니다.'))
-      .finally(() => active && setDbLoading(false));
-    return () => { active = false; };
-  }, []);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial authenticated data load
+    void loadDbTeams();
+  }, [loadDbTeams]);
 
   const summary = useMemo(() => ({
     all: rows.length, new: rows.filter((row) => row.status === 'new').length,
@@ -68,6 +74,7 @@ export default function TeamsPage() {
     });
   }, [categoryFilter, dbTeams, teamSearch]);
   const selectedTeam = dbTeams.find((team) => team.id === selectedTeamId) || null;
+  const applicableCount = summary.new + summary.changed;
 
   const resetImport = () => {
     setRows([]); setFileName(''); setStatusFilter('all');
@@ -93,6 +100,25 @@ export default function TeamsPage() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Excel 처리 중 오류가 발생했습니다.');
     } finally { setProcessing(false); }
+  };
+
+  const applyChanges = async () => {
+    setApplying(true); setError(null);
+    try {
+      const response = await fetch('/api/teams/apply', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
+        body: JSON.stringify({ fileName, rows }),
+      });
+      const result = await response.json() as { newCount?: number; changedCount?: number; error?: string };
+      if (!response.ok) throw new Error(result.error || 'DB 반영에 실패했습니다.');
+      setConfirmOpen(false); setRows([]); setFileName(''); setStatusFilter('all'); setExpandedRow(null);
+      if (inputRef.current) inputRef.current.value = '';
+      await loadDbTeams();
+      setNotice(`DB 반영이 완료되었습니다. 신규 ${result.newCount || 0}건, 변경 ${result.changedCount || 0}건을 처리했습니다.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'DB 반영 중 오류가 발생했습니다.');
+      setConfirmOpen(false);
+    } finally { setApplying(false); }
   };
 
   return <div>
@@ -137,7 +163,7 @@ export default function TeamsPage() {
     </section>
 
     {rows.length > 0 && <section>
-      <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"><div><h2 className="font-bold">실제 비교 결과</h2><p className="text-xs text-gray-500">{fileName} · 변경 행을 누르면 달라진 필드만 확인할 수 있습니다.</p></div><div className="text-right"><button type="button" disabled title="관리자 로그인 적용 후 사용 가능" className="bg-gray-300 px-5 py-2.5 text-sm font-bold text-gray-600">DB 반영</button><p className="mt-1 text-xs font-medium text-amber-700">관리자 로그인 적용 후 사용 가능</p></div></div>
+      <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"><div><h2 className="font-bold">실제 비교 결과</h2><p className="text-xs text-gray-500">{fileName} · 변경 행을 누르면 달라진 필드만 확인할 수 있습니다.</p></div><div className="text-right"><button type="button" disabled={applicableCount === 0 || applying} onClick={() => setConfirmOpen(true)} className="bg-emerald-800 px-5 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600">DB 반영</button><p className="mt-1 text-xs font-medium text-gray-500">신규·변경 항목만 관리자 권한으로 반영됩니다.</p></div></div>
       <div className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
         <SummaryCard label="전체" value={summary.all} active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} />
         <SummaryCard label="신규" value={summary.new} active={statusFilter === 'new'} onClick={() => setStatusFilter('new')} />
@@ -152,6 +178,17 @@ export default function TeamsPage() {
       })}{filteredRows.length === 0 && <tr><td colSpan={9} className="p-10 text-center text-gray-500">해당 상태의 행이 없습니다.</td></tr>}</tbody></table></div>
       <div className="mt-4 border border-gray-200 bg-white p-4 text-xs text-gray-500"><strong className="text-gray-700">처리 범위:</strong> 원본 파일은 업로드하거나 저장하지 않습니다. 팀명, 분류, 성명, 연락처, 업체명, 수수료율, 전기사용량만 비교하며 은행·전자팩스 정보는 읽거나 전송하지 않습니다.</div>
     </section>}
+
+    {confirmOpen && <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/45 px-4" role="dialog" aria-modal="true" aria-labelledby="apply-title">
+      <div className="w-full max-w-md border border-gray-200 bg-white p-6 shadow-xl">
+        <h2 id="apply-title" className="text-lg font-bold text-gray-950">팀 DB 반영 확인</h2>
+        <p className="mt-2 text-sm text-gray-600">검토한 Excel 변경사항을 실제 팀 데이터에 반영합니다.</p>
+        <dl className="mt-5 grid grid-cols-2 gap-3"><div className="border border-gray-200 bg-gray-50 p-3"><dt className="text-xs font-bold text-gray-500">신규</dt><dd className="mt-1 text-xl font-bold text-emerald-700">{summary.new}건</dd></div><div className="border border-gray-200 bg-gray-50 p-3"><dt className="text-xs font-bold text-gray-500">변경</dt><dd className="mt-1 text-xl font-bold text-blue-700">{summary.changed}건</dd></div></dl>
+        <p className="mt-4 text-sm font-bold">총 {applicableCount}건을 반영하시겠습니까?</p>
+        <p className="mt-2 text-xs text-amber-700">중복 후보와 확인 필요 항목은 반영되지 않습니다.</p>
+        <div className="mt-6 flex justify-end gap-2"><button type="button" disabled={applying} onClick={() => setConfirmOpen(false)} className="border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700">취소</button><button type="button" disabled={applying} onClick={applyChanges} className="bg-emerald-800 px-4 py-2 text-sm font-bold text-white disabled:opacity-60">{applying ? '반영 중...' : `${applicableCount}건 반영`}</button></div>
+      </div>
+    </div>}
   </div>;
 }
 

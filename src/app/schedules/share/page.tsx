@@ -76,14 +76,14 @@ export default function ShareSchedulerPage() {
 
     fetchInitialData();
 
-    // Supabase Realtime 구독 설정 ('hrmm' 스키마의 'schedules' 테이블 감시)
+    // Supabase Realtime 구독 설정 ('daesan' 스키마의 'schedules' 테이블 감시)
     const channel = supabase
       .channel('share-db-changes')
       .on(
         'postgres_changes',
         {
           event: '*',
-          schema: 'hrmm',
+          schema: 'daesan',
           table: 'schedules',
         },
         (payload) => {

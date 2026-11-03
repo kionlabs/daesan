@@ -87,10 +87,10 @@ const getWeekPeriodInfo = (year: number, weekNum: number) => {
   };
 };
 
-const REVENUE_SQL_SCRIPT = `CREATE TABLE IF NOT EXISTS hrmm.revenues (
+const REVENUE_SQL_SCRIPT = `CREATE TABLE IF NOT EXISTS daesan.revenues (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    staff_id UUID NOT NULL REFERENCES hrmm.staffs(id) ON DELETE CASCADE,
-    market_id UUID REFERENCES hrmm.markets(id) ON DELETE SET NULL,
+    staff_id UUID NOT NULL REFERENCES daesan.staffs(id) ON DELETE CASCADE,
+    market_id UUID REFERENCES daesan.markets(id) ON DELETE SET NULL,
     year INTEGER NOT NULL,
     week_number INTEGER NOT NULL CHECK (week_number BETWEEN 1 AND 53),
     period_text TEXT,
@@ -100,9 +100,9 @@ const REVENUE_SQL_SCRIPT = `CREATE TABLE IF NOT EXISTS hrmm.revenues (
     CONSTRAINT unique_staff_year_week UNIQUE (staff_id, year, week_number)
 );
 
-ALTER TABLE hrmm.revenues ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow public read access to revenues" ON hrmm.revenues FOR SELECT USING (true);
-CREATE POLICY "Allow public write access to revenues" ON hrmm.revenues FOR ALL USING (true);`;
+ALTER TABLE daesan.revenues ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "admins_manage_revenues" ON daesan.revenues FOR ALL TO authenticated
+USING ((SELECT private.is_admin())) WITH CHECK ((SELECT private.is_admin()));`;
 
 export default function StaffDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
@@ -564,7 +564,7 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
 
       if (upsertError) {
         setShowDbMissingNotice(true);
-        alert(`${weekNum}주차 매출(${amount.toLocaleString()}원)이 로컬에 저장되었습니다.\n(※ Supabase DB에 hrmm.revenues 테이블 생성이 필요합니다. 상단 SQL을 실행해 주세요.)`);
+        alert(`${weekNum}주차 매출(${amount.toLocaleString()}원)이 로컬에 저장되었습니다.\n(※ Supabase DB에 daesan.revenues 테이블 생성이 필요합니다. 상단 SQL을 실행해 주세요.)`);
       } else {
         alert(`${weekNum}주차 매출(${amount.toLocaleString()}원)이 DB에 성공적으로 저장되었습니다.`);
       }
@@ -621,13 +621,13 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
 
       if (upsertError) {
         setShowDbMissingNotice(true);
-        alert(`총 52주차 매출이 로컬 저장소에 일괄 저장되었습니다.\n(※ Supabase DB에 hrmm.revenues 테이블을 생성하시면 DB에 완벽히 동기화됩니다.)`);
+        alert(`총 52주차 매출이 로컬 저장소에 일괄 저장되었습니다.\n(※ Supabase DB에 daesan.revenues 테이블을 생성하시면 DB에 완벽히 동기화됩니다.)`);
       } else {
         alert(`총 52주차 매출 데이터가 Supabase DB에 완벽하게 일괄 저장되었습니다!`);
       }
     } catch (err: any) {
       setShowDbMissingNotice(true);
-      alert(`총 52주차 매출이 로컬 저장소에 일괄 저장되었습니다.\n(※ Supabase 대시보드 SQL Editor에서 hrmm.revenues 테이블 생성을 진행해 주세요.)`);
+      alert(`총 52주차 매출이 로컬 저장소에 일괄 저장되었습니다.\n(※ Supabase 대시보드 SQL Editor에서 daesan.revenues 테이블 생성을 진행해 주세요.)`);
     } finally {
       setRevenueSavingAll(false);
     }
@@ -1029,7 +1029,7 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
               <div className="flex justify-between items-start">
                 <div className="flex items-center gap-2 font-extrabold text-amber-900 text-sm">
                   <span>⚠️</span>
-                  <span>Supabase 데이터베이스 (`hrmm.revenues`) 1초 설치 안내</span>
+                  <span>Supabase 데이터베이스 (`daesan.revenues`) 1초 설치 안내</span>
                 </div>
                 <button
                   type="button"
@@ -1040,7 +1040,7 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
                 </button>
               </div>
               <p className="text-xs text-amber-800 leading-relaxed">
-                현재 Supabase DB에 <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono text-amber-900 font-bold">hrmm.revenues</code> 테이블이 아직 생성되지 않아 입력하신 매출이 <strong>브라우저 내(localStorage)에 안전하게 임시 저장</strong>되고 있습니다.
+                현재 Supabase DB에 <code className="bg-amber-100 px-1.5 py-0.5 rounded font-mono text-amber-900 font-bold">daesan.revenues</code> 테이블이 아직 생성되지 않아 입력하신 매출이 <strong>브라우저 내(localStorage)에 안전하게 임시 저장</strong>되고 있습니다.
                 원격 데이터베이스로의 완전한 저장 및 동기화를 위해, 아래 버튼을 눌러 SQL을 복사한 후 <strong>Supabase 대시보드 &gt; SQL Editor</strong>에서 실행해 주세요.
               </p>
               <div className="bg-slate-900 text-slate-100 p-3 rounded-lg text-xs font-mono overflow-x-auto relative">

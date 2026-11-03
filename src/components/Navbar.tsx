@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
 
 const navGroups = [
   { label: '운영', items: [
@@ -23,8 +25,25 @@ const navGroups = [
 
 export default function Navbar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [adminName, setAdminName] = useState('관리자');
   const active = (href: string) => href === '/' ? pathname === '/' : pathname?.startsWith(href);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return;
+      const { data } = await supabase.from('profiles').select('display_name').eq('id', user.id).maybeSingle();
+      if (data?.display_name) setAdminName(data.display_name);
+    });
+  }, []);
+
+  const logout = async () => {
+    await createClient().auth.signOut();
+    router.push('/login');
+    router.refresh();
+  };
 
   return <>
     <header className="fixed inset-x-0 top-0 z-40 flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 lg:hidden">
@@ -51,8 +70,8 @@ export default function Navbar() {
       </nav>
       <div className="border-t border-white/10 p-4"><div className="flex items-center gap-3">
         <div className="flex h-9 w-9 items-center justify-center bg-emerald-800 text-xs font-bold">관리</div>
-        <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">관리자 데모</p><p className="text-[11px] text-emerald-200">Auth 연결 전</p></div>
-        <span className="h-2 w-2 bg-amber-400" title="데모 모드" />
+        <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{adminName}</p><p className="text-[11px] text-emerald-200">관리자 세션</p></div>
+        <button type="button" onClick={logout} className="border border-white/20 px-2 py-1 text-[11px] text-emerald-50 hover:bg-white/10">로그아웃</button>
       </div></div>
     </aside>
   </>;

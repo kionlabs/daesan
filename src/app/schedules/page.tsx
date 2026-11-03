@@ -142,12 +142,12 @@ export default function SchedulesPage() {
 
     fetchInitialData();
 
-    // Supabase Realtime 구독 설정 ('hrmm' 스키마의 'schedules' 및 'waiting_pools' 감시)
+    // Supabase Realtime 구독 설정 ('daesan' 스키마의 'schedules' 및 'waiting_pools' 감시)
     const channel = supabase
       .channel('schema-db-changes')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'hrmm', table: 'schedules' },
+        { event: '*', schema: 'daesan', table: 'schedules' },
         () => {
           fetchSchedulesOnly();
           fetchWaitingPoolsOnly();
@@ -155,7 +155,7 @@ export default function SchedulesPage() {
       )
       .on(
         'postgres_changes',
-        { event: '*', schema: 'hrmm', table: 'waiting_pools' },
+        { event: '*', schema: 'daesan', table: 'waiting_pools' },
         () => {
           fetchWaitingPoolsOnly();
         }

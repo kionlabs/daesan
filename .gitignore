@@ -24,6 +24,12 @@
 .DS_Store
 *.pem
 
+# local source files (call recordings and Excel originals)
+/public/files/
+
+# Supabase CLI local state
+/supabase/.temp/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
