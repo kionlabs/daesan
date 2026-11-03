@@ -13,7 +13,9 @@ const maskContact = (value: string) => {
 
 export async function GET() {
   try {
-    if (!await getAdminSession()) return Response.json({ error: '관리자 로그인이 필요합니다.' }, { status: 401 });
+    const admin = await getAdminSession();
+    if (!admin) return Response.json({ error: '관리자 로그인이 필요합니다.' }, { status: 401 });
+    if (admin.mustChangePassword) return Response.json({ error: '최초 로그인 비밀번호 변경이 필요합니다.' }, { status: 403 });
     const baseline = await loadTeamBaseline();
     const grouped = new Map<string, {
       id: string; teamName: string; categories: Set<string>; members: Array<{
@@ -65,7 +67,9 @@ const isParsedRow = (value: unknown): value is ParsedTeamRow => {
 
 export async function POST(request: Request) {
   try {
-    if (!await getAdminSession()) return Response.json({ error: '관리자 로그인이 필요합니다.' }, { status: 401 });
+    const admin = await getAdminSession();
+    if (!admin) return Response.json({ error: '관리자 로그인이 필요합니다.' }, { status: 401 });
+    if (admin.mustChangePassword) return Response.json({ error: '최초 로그인 비밀번호 변경이 필요합니다.' }, { status: 403 });
     const contentLength = Number(request.headers.get('content-length') || 0);
     if (contentLength > 1_500_000) return Response.json({ error: '비교 요청이 너무 큽니다.' }, { status: 413 });
     const body = await request.json() as { rows?: unknown };

@@ -7,6 +7,7 @@ export async function updateSession(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      db: { schema: 'daesan' },
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll(cookiesToSet) {
@@ -29,8 +30,23 @@ export async function updateSession(request: NextRequest) {
     loginUrl.searchParams.set('next', `${pathname}${request.nextUrl.search}`);
     return NextResponse.redirect(loginUrl);
   }
-  if (data?.claims && pathname === '/login') {
-    return NextResponse.redirect(new URL('/', request.url));
+  if (data?.claims && !apiPath) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('must_change_password')
+      .eq('id', data.claims.sub)
+      .maybeSingle();
+    const mustChangePassword = profile?.must_change_password === true;
+
+    if (mustChangePassword && pathname !== '/auth/set-password') {
+      return NextResponse.redirect(new URL('/auth/set-password', request.url));
+    }
+    if (!mustChangePassword && pathname === '/auth/set-password') {
+      return NextResponse.redirect(new URL('/teams', request.url));
+    }
+    if (pathname === '/login') {
+      return NextResponse.redirect(new URL(mustChangePassword ? '/auth/set-password' : '/', request.url));
+    }
   }
   return response;
 }
