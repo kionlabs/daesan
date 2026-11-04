@@ -1,10 +1,15 @@
 export type ParsedTeamRow = {
   rowNumber: number;
+  sequenceNumber: string;
   teamName: string;
   category: string;
   memberName: string;
   contact: string;
+  electronicFax: string;
+  bankName: string;
   companyName: string;
+  commissionRateText: string;
+  powerUsageText: string;
   commissionRate: number | null;
   powerUsageKw: number | null;
 };
@@ -57,7 +62,7 @@ export async function parseTeamWorkbook(file: File): Promise<ParsedTeamRow[]> {
     const row = sheet[rowNumber - 1] || [];
     row.forEach((value, index) => {
       const header = cellText(value).replace(/\s/g, '');
-      if (['팀명', '분류', '성명', '연락처', '업체명', '수수료율', '전기사용량(Kw)', '전기사용량'].includes(header)) columns.set(header, index);
+      if (['순번', '팀명', '분류', '성명', '연락처', '전자팩스', '은행명', '업체명', '수수료율', '전기사용량(Kw)', '전기사용량'].includes(header)) columns.set(header, index);
     });
     if (columns.has('팀명') && columns.has('성명') && columns.has('연락처')) { headerRow = rowNumber; break; }
     columns.clear();
@@ -74,11 +79,14 @@ export async function parseTeamWorkbook(file: File): Promise<ParsedTeamRow[]> {
     const contact = cellText(get('연락처'));
     if (!teamName && !memberName && !contact) continue;
     rows.push({
-      rowNumber, teamName, memberName, contact,
+      rowNumber, sequenceNumber: cellText(get('순번')), teamName, memberName, contact,
       category: cellText(get('분류')),
+      electronicFax: cellText(get('전자팩스')),
+      bankName: cellText(get('은행명')),
       companyName: cellText(get('업체명')),
-      commissionRate: parseNumber(get('수수료율'), true),
-      powerUsageKw: parseNumber(get('전기사용량(Kw)', '전기사용량')),
+      commissionRateText: cellText(get('수수료율')),
+      powerUsageText: cellText(get('전기사용량(Kw)', '전기사용량')),
+      commissionRate: parseNumber(get('수수료율'), true), powerUsageKw: parseNumber(get('전기사용량(Kw)', '전기사용량')),
     });
   }
   if (!rows.length) throw new Error('팀리스트에서 데이터 행을 찾을 수 없습니다.');
@@ -86,13 +94,16 @@ export async function parseTeamWorkbook(file: File): Promise<ParsedTeamRow[]> {
 }
 
 const comparable = (row: Partial<ParsedTeamRow>) => ({
-  teamName: normalizeText(row.teamName), category: normalizeText(row.category), memberName: normalizeText(row.memberName),
+  sequenceNumber: cellText(row.sequenceNumber), teamName: normalizeText(row.teamName), category: normalizeText(row.category), memberName: normalizeText(row.memberName),
   contact: normalizePhone(row.contact), companyName: normalizeText(row.companyName),
-  commissionRate: row.commissionRate ?? null, powerUsageKw: row.powerUsageKw ?? null,
+  electronicFax: cellText(row.electronicFax), bankName: cellText(row.bankName),
+  commissionRateText: cellText(row.commissionRateText), powerUsageText: cellText(row.powerUsageText),
 });
 const asExisting = (row: BaselineTeamRow): ParsedTeamRow => ({
-  rowNumber: row.rowNumber, teamName: row.teamName, category: row.category, memberName: row.memberName,
-  contact: row.contact, companyName: row.companyName, commissionRate: row.commissionRate, powerUsageKw: row.powerUsageKw,
+  rowNumber: row.rowNumber, sequenceNumber: row.sequenceNumber, teamName: row.teamName, category: row.category, memberName: row.memberName,
+  contact: row.contact, electronicFax: row.electronicFax, bankName: row.bankName, companyName: row.companyName,
+  commissionRateText: row.commissionRateText, powerUsageText: row.powerUsageText,
+  commissionRate: row.commissionRate, powerUsageKw: row.powerUsageKw,
 });
 
 export function compareTeamRows(rows: ParsedTeamRow[], baseline: BaselineTeamRow[]): ComparedTeamRow[] {
@@ -136,10 +147,12 @@ export function compareTeamRows(rows: ParsedTeamRow[], baseline: BaselineTeamRow
 export function changedFields(row: ComparedTeamRow) {
   if (!row.existing) return [];
   const fields: Array<[string, unknown, unknown]> = [
-    ['팀명', row.existing.teamName, row.teamName], ['분류', row.existing.category, row.category],
-    ['담당자', row.existing.memberName, row.memberName], ['연락처', row.existing.contact, row.contact],
-    ['업체명', row.existing.companyName, row.companyName], ['수수료율', row.existing.commissionRate, row.commissionRate],
-    ['전기사용량', row.existing.powerUsageKw, row.powerUsageKw],
+    ['순번', row.existing.sequenceNumber, row.sequenceNumber], ['팀명', row.existing.teamName, row.teamName],
+    ['분류', row.existing.category, row.category], ['성명', row.existing.memberName, row.memberName],
+    ['연락처', row.existing.contact, row.contact], ['전자팩스', row.existing.electronicFax, row.electronicFax],
+    ['은행명', row.existing.bankName, row.bankName],
+    ['업체명', row.existing.companyName, row.companyName], ['수수료율', row.existing.commissionRateText, row.commissionRateText],
+    ['전기사용량', row.existing.powerUsageText, row.powerUsageText],
   ];
   return fields.filter(([, before, after]) => String(before ?? '') !== String(after ?? ''));
 }

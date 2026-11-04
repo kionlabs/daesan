@@ -19,8 +19,11 @@ const get = (row, ...names) => {
 };
 const rows = sheet.slice(headerIndex + 1).map((row, index) => ({
   rowNumber: headerIndex + index + 2,
+  sequenceNumber: text(get(row, '순번')),
   teamName: text(get(row, '팀명')), category: text(get(row, '분류')), memberName: text(get(row, '성명')),
-  contact: text(get(row, '연락처')), companyName: text(get(row, '업체명')),
+  contact: text(get(row, '연락처')), electronicFax: text(get(row, '전자팩스')), bankName: text(get(row, '은행명')),
+  companyName: text(get(row, '업체명')), commissionRateText: text(get(row, '수수료율')),
+  powerUsageText: text(get(row, '전기사용량(Kw)', '전기사용량')),
   commissionRate: number(get(row, '수수료율'), true), powerUsageKw: number(get(row, '전기사용량(Kw)', '전기사용량')),
 })).filter((row) => row.teamName || row.memberName || row.contact);
 
@@ -28,7 +31,7 @@ const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Typ
 const result = await response.json();
 if (!response.ok) throw new Error(result.error || `Compare failed with ${response.status}`);
 const summary = Object.fromEntries(['new', 'changed', 'same', 'duplicate', 'review'].map((status) => [status, result.rows.filter((row) => row.status === status).length]));
-const comparedFields = ['teamName', 'category', 'memberName', 'contact', 'companyName', 'commissionRate', 'powerUsageKw'];
+const comparedFields = ['sequenceNumber', 'teamName', 'category', 'memberName', 'contact', 'electronicFax', 'bankName', 'companyName', 'commissionRateText', 'powerUsageText'];
 const changedDetails = result.rows.filter((row) => row.status === 'changed').map((row) => ({
   rowNumber: row.rowNumber,
   fields: comparedFields.filter((field) => String(row.existing?.[field] ?? '') !== String(row[field] ?? '')),

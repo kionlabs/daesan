@@ -4,51 +4,24 @@ import { loadTeamBaseline } from '@/lib/server/team-baseline';
 
 export const runtime = 'nodejs';
 
-const maskContact = (value: string) => {
-  if (!value) return '-';
-  const digits = value.replace(/\D/g, '');
-  if (digits.length < 7) return '***';
-  return `${digits.slice(0, 3)}-****-${digits.slice(-4)}`;
-};
-
 export async function GET() {
   try {
     const admin = await getAdminSession();
     if (!admin) return Response.json({ error: '관리자 로그인이 필요합니다.' }, { status: 401 });
     if (admin.mustChangePassword) return Response.json({ error: '최초 로그인 비밀번호 변경이 필요합니다.' }, { status: 403 });
     const baseline = await loadTeamBaseline();
-    const grouped = new Map<string, {
-      id: string; teamName: string; categories: Set<string>; members: Array<{
-        id: string; name: string; contact: string; category: string; companyName: string;
-        commissionRate: number | null; powerUsageKw: number | null; needsReview: boolean;
-      }>;
-    }>();
+    const teamNameCounts = new Map<string, number>();
+    baseline.forEach((row) => teamNameCounts.set(row.teamName, (teamNameCounts.get(row.teamName) || 0) + 1));
+    const rows = baseline.map((row) => ({
+      id: row.id, sequenceNumber: row.sequenceNumber, teamName: row.teamName, category: row.category,
+      memberName: row.memberName, contact: row.contact, electronicFax: row.electronicFax,
+      bankName: row.bankName, companyName: row.companyName, commissionRate: row.commissionRate,
+      commissionRateText: row.commissionRateText, powerUsageText: row.powerUsageText,
+      powerUsageKw: row.powerUsageKw, duplicateTeamName: (teamNameCounts.get(row.teamName) || 0) > 1,
+    }));
+    const duplicateTeamNames = Array.from(teamNameCounts.values()).filter((count) => count > 1).length;
 
-    for (const row of baseline) {
-      const team = grouped.get(row.teamId) || {
-        id: row.teamId, teamName: row.teamName, categories: new Set<string>(), members: [],
-      };
-      if (row.category) team.categories.add(row.category);
-      team.members.push({
-        id: row.id,
-        name: row.memberName || '-',
-        contact: maskContact(row.contact),
-        category: row.category || '-',
-        companyName: row.companyName || '-',
-        commissionRate: row.commissionRate,
-        powerUsageKw: row.powerUsageKw,
-        needsReview: !row.memberName.trim() || !row.contact.trim() || !row.category.trim(),
-      });
-      grouped.set(row.teamId, team);
-    }
-
-    const teams = Array.from(grouped.values()).map((team) => ({
-      ...team,
-      categories: Array.from(team.categories).sort((a, b) => a.localeCompare(b, 'ko')),
-    })).sort((a, b) => a.teamName.localeCompare(b.teamName, 'ko'));
-    const reviewRequired = teams.reduce((count, team) => count + team.members.filter((member) => member.needsReview).length, 0);
-
-    return Response.json({ teams, summary: { teams: teams.length, members: baseline.length, reviewRequired } }, {
+    return Response.json({ rows, summary: { totalRows: rows.length, uniqueTeams: teamNameCounts.size, duplicateTeamNames } }, {
       headers: { 'Cache-Control': 'no-store, private', 'X-Content-Type-Options': 'nosniff' },
     });
   } catch {
@@ -61,8 +34,11 @@ const validNumber = (value: unknown) => value === null || (typeof value === 'num
 const isParsedRow = (value: unknown): value is ParsedTeamRow => {
   if (!value || typeof value !== 'object') return false;
   const row = value as Record<string, unknown>;
-  return Number.isInteger(row.rowNumber) && validText(row.teamName) && validText(row.category) && validText(row.memberName)
-    && validText(row.contact, 50) && validText(row.companyName) && validNumber(row.commissionRate) && validNumber(row.powerUsageKw);
+  return Number.isInteger(row.rowNumber) && validText(row.sequenceNumber, 30) && validText(row.teamName)
+    && validText(row.category) && validText(row.memberName) && validText(row.contact, 50)
+    && validText(row.electronicFax, 100) && validText(row.bankName, 100) && validText(row.companyName)
+    && validText(row.commissionRateText, 100) && validText(row.powerUsageText, 100)
+    && validNumber(row.commissionRate) && validNumber(row.powerUsageKw);
 };
 
 export async function POST(request: Request) {

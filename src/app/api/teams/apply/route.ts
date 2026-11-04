@@ -10,8 +10,11 @@ const validNumber = (value: unknown) => value === null || (typeof value === 'num
 const isParsedRow = (value: unknown): value is ParsedTeamRow => {
   if (!value || typeof value !== 'object') return false;
   const row = value as Record<string, unknown>;
-  return Number.isInteger(row.rowNumber) && validText(row.teamName) && validText(row.category) && validText(row.memberName)
-    && validText(row.contact, 50) && validText(row.companyName) && validNumber(row.commissionRate) && validNumber(row.powerUsageKw);
+  return Number.isInteger(row.rowNumber) && validText(row.sequenceNumber, 30) && validText(row.teamName)
+    && validText(row.category) && validText(row.memberName) && validText(row.contact, 50)
+    && validText(row.electronicFax, 100) && validText(row.bankName, 100) && validText(row.companyName)
+    && validText(row.commissionRateText, 100) && validText(row.powerUsageText, 100)
+    && validNumber(row.commissionRate) && validNumber(row.powerUsageKw);
 };
 
 export async function POST(request: Request) {
@@ -34,11 +37,16 @@ export async function POST(request: Request) {
       status: row.status,
       existingMemberId: row.existingMemberId || null,
       rowNumber: row.rowNumber,
+      sequenceNumber: row.sequenceNumber,
       teamName: row.teamName,
       category: row.category,
       memberName: row.memberName,
       contact: row.contact,
+      electronicFax: row.electronicFax,
+      bankName: row.bankName,
       companyName: row.companyName,
+      commissionRateText: row.commissionRateText,
+      powerUsageText: row.powerUsageText,
       commissionRate: row.commissionRate,
       powerUsageKw: row.powerUsageKw,
     }));
