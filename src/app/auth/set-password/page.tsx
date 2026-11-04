@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 
 export default function SetPasswordPage() {
   const router = useRouter();
+  const [supabase] = useState(() => createClient());
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -13,12 +14,44 @@ export default function SetPasswordPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) router.replace('/login');
-      else setCheckingSession(false);
-    });
-  }, [router]);
+    let active = true;
+
+    const establishRecoverySession = async () => {
+      const url = new URL(window.location.href);
+      const code = url.searchParams.get('code');
+      const hash = new URLSearchParams(url.hash.slice(1));
+      const accessToken = hash.get('access_token');
+      const refreshToken = hash.get('refresh_token');
+
+      let sessionError: Error | null = null;
+      if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        sessionError = error;
+      } else if (accessToken && refreshToken) {
+        const { error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        sessionError = error;
+      }
+
+      if (code || accessToken) {
+        window.history.replaceState({}, document.title, '/auth/set-password');
+      }
+
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (!active) return;
+      if (sessionError || userError || !user) {
+        setError('비밀번호 변경 링크가 만료되었거나 올바르지 않습니다. 새 복구 메일을 요청해 주세요.');
+        setCheckingSession(false);
+        return;
+      }
+      setCheckingSession(false);
+    };
+
+    void establishRecoverySession();
+    return () => { active = false; };
+  }, [supabase]);
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -28,7 +61,7 @@ export default function SetPasswordPage() {
     }
     if (password !== confirmPassword) { setError('비밀번호가 일치하지 않습니다.'); return; }
     setLoading(true); setError(null);
-    const { error: updateError } = await createClient().auth.updateUser({ password });
+    const { error: updateError } = await supabase.auth.updateUser({ password });
     if (updateError) { setError('비밀번호를 변경하지 못했습니다. 다시 로그인한 뒤 시도해 주세요.'); setLoading(false); return; }
     router.replace('/teams'); router.refresh();
   };
