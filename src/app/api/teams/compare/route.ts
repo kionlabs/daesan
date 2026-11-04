@@ -11,17 +11,23 @@ export async function GET() {
     if (admin.mustChangePassword) return Response.json({ error: '최초 로그인 비밀번호 변경이 필요합니다.' }, { status: 403 });
     const baseline = await loadTeamBaseline();
     const teamNameCounts = new Map<string, number>();
-    baseline.forEach((row) => teamNameCounts.set(row.teamName, (teamNameCounts.get(row.teamName) || 0) + 1));
+    const teamCategoryCounts = new Map<string, number>();
+    baseline.forEach((row) => {
+      teamNameCounts.set(row.teamName, (teamNameCounts.get(row.teamName) || 0) + 1);
+      const key = `${row.teamName.trim()}\u0000${row.category.trim()}`;
+      teamCategoryCounts.set(key, (teamCategoryCounts.get(key) || 0) + 1);
+    });
     const rows = baseline.map((row) => ({
       id: row.id, sequenceNumber: row.sequenceNumber, teamName: row.teamName, category: row.category,
       memberName: row.memberName, contact: row.contact, electronicFax: row.electronicFax,
       bankName: row.bankName, companyName: row.companyName, commissionRate: row.commissionRate,
       commissionRateText: row.commissionRateText, powerUsageText: row.powerUsageText,
-      powerUsageKw: row.powerUsageKw, duplicateTeamName: (teamNameCounts.get(row.teamName) || 0) > 1,
+      powerUsageKw: row.powerUsageKw,
+      duplicateTeamCategory: (teamCategoryCounts.get(`${row.teamName.trim()}\u0000${row.category.trim()}`) || 0) > 1,
     }));
-    const duplicateTeamNames = Array.from(teamNameCounts.values()).filter((count) => count > 1).length;
+    const duplicateTeamCategories = Array.from(teamCategoryCounts.values()).filter((count) => count > 1).length;
 
-    return Response.json({ rows, summary: { totalRows: rows.length, uniqueTeams: teamNameCounts.size, duplicateTeamNames } }, {
+    return Response.json({ rows, summary: { totalRows: rows.length, uniqueTeams: teamNameCounts.size, duplicateTeamCategories } }, {
       headers: { 'Cache-Control': 'no-store, private', 'X-Content-Type-Options': 'nosniff' },
     });
   } catch {

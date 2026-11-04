@@ -15,8 +15,10 @@ const formatDiff = (_label: string, value: unknown) => display(value);
 type DbTeamRow = {
   id: string; sequenceNumber: string; teamName: string; category: string; memberName: string; contact: string;
   electronicFax: string; bankName: string; companyName: string; commissionRateText: string; powerUsageText: string; commissionRate: number | null;
-  powerUsageKw: number | null; duplicateTeamName: boolean;
+  powerUsageKw: number | null; duplicateTeamCategory: boolean;
 };
+
+const DB_PAGE_SIZE = 50;
 
 export default function TeamsPage() {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -28,11 +30,12 @@ export default function TeamsPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | ImportStatus>('all');
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [dbRows, setDbRows] = useState<DbTeamRow[]>([]);
-  const [dbSummary, setDbSummary] = useState({ totalRows: 0, uniqueTeams: 0, duplicateTeamNames: 0 });
+  const [dbSummary, setDbSummary] = useState({ totalRows: 0, uniqueTeams: 0, duplicateTeamCategories: 0 });
   const [dbLoading, setDbLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
   const [teamSearch, setTeamSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [dbPage, setDbPage] = useState(1);
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -70,6 +73,8 @@ export default function TeamsPage() {
     });
   }, [categoryFilter, dbRows, teamSearch]);
   const selectedDbRow = dbRows.find((row) => row.id === selectedRowId) || null;
+  const dbPageCount = Math.max(1, Math.ceil(visibleDbRows.length / DB_PAGE_SIZE));
+  const pagedDbRows = visibleDbRows.slice((dbPage - 1) * DB_PAGE_SIZE, dbPage * DB_PAGE_SIZE);
   const applicableCount = summary.new + summary.changed;
 
   const resetImport = () => {
@@ -118,14 +123,14 @@ export default function TeamsPage() {
   };
 
   return <div>
-    <PageHeader eyebrow="OPERATIONS" title="팀 관리" description="최신 행사관리 Excel을 기준 팀 데이터와 비교하고 변경사항을 검토합니다." />
+    <PageHeader eyebrow="OPERATIONS" title="팀 관리" description="현재 팀리스트를 확인하고 최신 행사관리 Excel의 변경사항을 비교합니다." action={<label className={`inline-flex cursor-pointer items-center self-start bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800 sm:self-auto ${processing ? 'pointer-events-none opacity-60' : ''}`}>{processing ? '파싱 및 비교 중...' : 'Excel 파일 선택'}<input ref={inputRef} type="file" accept=".xlsx,.xlsm" className="hidden" onChange={(event) => handleFile(event.target.files?.[0])} /></label>} />
     {error && <div className="mb-4 border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>}
     {notice && <div className="mb-4 border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{notice}</div>}
 
     <section className="mb-6 grid gap-3 sm:grid-cols-3">
       <Metric label="팀리스트 전체 행" value={dbLoading ? '조회 중' : `${dbSummary.totalRows}건`} />
       <Metric label="팀명 기준 팀 수" value={dbLoading ? '조회 중' : `${dbSummary.uniqueTeams}개`} />
-      <Metric label="중복된 팀명" value={dbLoading ? '조회 중' : `${dbSummary.duplicateTeamNames}개`} />
+      <Metric label="중복 팀·분류" value={dbLoading ? '조회 중' : `${dbSummary.duplicateTeamCategories}개`} />
     </section>
 
     <section className="mb-6 border border-gray-200 bg-white">
@@ -133,30 +138,22 @@ export default function TeamsPage() {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div><h2 className="font-bold text-gray-950">현재 DB 팀리스트</h2><p className="mt-1 text-sm text-gray-500">Excel `팀리스트`의 행 순서와 주요 컬럼을 가공하지 않고 표시합니다.</p></div>
           <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_180px]">
-            <input aria-label="팀 검색" value={teamSearch} onChange={(event) => setTeamSearch(event.target.value)} placeholder="팀명, 성명, 연락처 검색" className="h-10 border border-gray-300 px-3 text-sm outline-none focus:border-emerald-700" />
-            <select aria-label="분류 필터" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="h-10 border border-gray-300 bg-white px-3 text-sm outline-none focus:border-emerald-700"><option value="all">전체 분류</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select>
+            <input aria-label="팀 검색" value={teamSearch} onChange={(event) => { setTeamSearch(event.target.value); setDbPage(1); }} placeholder="팀명, 성명, 연락처 검색" className="h-10 border border-gray-300 px-3 text-sm outline-none focus:border-emerald-700" />
+            <select aria-label="분류 필터" value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setDbPage(1); }} className="h-10 border border-gray-300 bg-white px-3 text-sm outline-none focus:border-emerald-700"><option value="all">전체 분류</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select>
           </div>
         </div>
       </div>
       {dbError ? <div className="p-8 text-center text-sm text-red-700">{dbError}</div> : dbLoading ? <div className="p-8 text-center text-sm text-gray-500">팀 데이터를 불러오는 중입니다.</div> : <div className="grid min-h-[360px] lg:grid-cols-[minmax(0,1fr)_380px]">
         <div className="overflow-x-auto lg:border-r lg:border-gray-200">
-          <table className="w-full min-w-[760px] text-sm"><thead className="sticky top-0 bg-gray-50 text-left text-xs text-gray-500"><tr><th className="px-4 py-3">순번</th><th className="px-4 py-3">팀명</th><th className="px-4 py-3">분류</th><th className="px-4 py-3">성명</th><th className="px-4 py-3">연락처</th></tr></thead><tbody className="divide-y divide-gray-100">{visibleDbRows.map((row) => <tr key={row.id} onClick={() => setSelectedRowId(row.id)} className={`cursor-pointer hover:bg-emerald-50 ${selectedRowId === row.id ? 'bg-emerald-50' : ''}`}><td className="px-4 py-3 text-gray-500">{display(row.sequenceNumber)}</td><td className="px-4 py-3 font-bold text-gray-950">{display(row.teamName)}{row.duplicateTeamName && <span className="ml-2 text-[10px] font-medium text-amber-700">중복 팀명</span>}</td><td className="px-4 py-3">{display(row.category)}</td><td className="px-4 py-3">{display(row.memberName)}</td><td className="whitespace-nowrap px-4 py-3">{display(row.contact)}</td></tr>)}{visibleDbRows.length === 0 && <tr><td colSpan={5} className="p-10 text-center text-gray-500">검색 조건에 맞는 행이 없습니다.</td></tr>}</tbody></table>
+          <table className="w-full min-w-[760px] text-sm"><thead className="sticky top-0 bg-gray-50 text-left text-xs text-gray-500"><tr><th className="px-4 py-3">순번</th><th className="px-4 py-3">팀명</th><th className="px-4 py-3">분류</th><th className="px-4 py-3">성명</th><th className="px-4 py-3">연락처</th></tr></thead><tbody className="divide-y divide-gray-100">{pagedDbRows.map((row) => <tr key={row.id} onClick={() => setSelectedRowId(row.id)} className={`cursor-pointer hover:bg-emerald-50 ${selectedRowId === row.id ? 'bg-emerald-50' : ''}`}><td className="px-4 py-3 text-gray-500">{display(row.sequenceNumber)}</td><td className="px-4 py-3 font-bold text-gray-950">{display(row.teamName)}{row.duplicateTeamCategory && <span className="ml-2 text-[10px] font-medium text-amber-700">중복 팀명</span>}</td><td className="px-4 py-3">{display(row.category)}</td><td className="px-4 py-3">{display(row.memberName)}</td><td className="whitespace-nowrap px-4 py-3">{display(row.contact)}</td></tr>)}{visibleDbRows.length === 0 && <tr><td colSpan={5} className="p-10 text-center text-gray-500">검색 조건에 맞는 행이 없습니다.</td></tr>}</tbody></table>
         </div>
         <aside className="p-5">{selectedDbRow ? <><div className="border-b border-gray-200 pb-4"><p className="text-xs font-bold text-emerald-700">선택 행 상세</p><h3 className="mt-1 text-xl font-bold text-gray-950">{display(selectedDbRow.teamName)}</h3><p className="mt-1 text-sm text-gray-500">순번 {display(selectedDbRow.sequenceNumber)} · {display(selectedDbRow.memberName)}</p></div><dl className="mt-5 grid grid-cols-[92px_1fr] gap-x-3 gap-y-4 text-sm"><dt className="text-gray-500">전자팩스</dt><dd>{display(selectedDbRow.electronicFax)}</dd><dt className="text-gray-500">은행명</dt><dd>{display(selectedDbRow.bankName)}</dd><dt className="text-gray-500">업체명</dt><dd>{display(selectedDbRow.companyName)}</dd><dt className="text-gray-500">수수료율</dt><dd>{display(selectedDbRow.commissionRateText)}</dd><dt className="text-gray-500">전기사용량</dt><dd>{display(selectedDbRow.powerUsageText)}</dd></dl><p className="mt-6 border-t border-gray-100 pt-4 text-xs leading-5 text-gray-500">상세 정보는 로그인한 관리자에게만 표시됩니다.</p></> : <div className="flex min-h-[280px] items-center justify-center text-center text-sm text-gray-500">목록에서 한 행을 선택하면<br />추가 정보를 확인할 수 있습니다.</div>}</aside>
       </div>}
-      <div className="border-t border-gray-200 bg-gray-50 px-5 py-3 text-xs text-gray-500">총 {visibleDbRows.length}개 행 표시 · 팀 수는 팀명 컬럼의 공백을 정리한 뒤 중복을 제외해 계산합니다.</div>
-    </section>
-
-    <section className="mb-6 border border-gray-200 bg-white">
-      <div className="flex flex-col gap-4 border-b border-gray-200 p-5 lg:flex-row lg:items-center lg:justify-between">
-        <div><h2 className="font-bold text-gray-950">최신 행사관리 Excel 업로드</h2><p className="mt-1 text-sm text-gray-500">현재 DB 목록을 확인한 뒤 최신 파일을 비교합니다. 브라우저에서는 `팀리스트`의 허용 필드만 읽고 매크로는 실행하지 않습니다.</p></div>
-        <div className="flex flex-wrap gap-2">{rows.length > 0 && <button type="button" onClick={resetImport} className="border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700">결과 닫기</button>}<label className={`inline-flex cursor-pointer items-center bg-emerald-700 px-4 py-2 text-sm font-bold text-white ${processing ? 'pointer-events-none opacity-60' : ''}`}>{processing ? '파싱 및 비교 중...' : 'Excel 파일 선택'}<input ref={inputRef} type="file" accept=".xlsx,.xlsm" className="hidden" onChange={(event) => handleFile(event.target.files?.[0])} /></label></div>
-      </div>
-      <div className="grid gap-3 p-5 text-sm md:grid-cols-3"><FlowStep number="1" title="업로드·파싱" description="팀리스트와 허용 필드만 추출" /><FlowStep number="2" title="DB 기준 비교" description="복합 식별값으로 자동 매칭" /><FlowStep number="3" title="변경 검토" description="상태와 필드별 차이 확인" /></div>
+      <div className="flex flex-col gap-3 border-t border-gray-200 bg-gray-50 px-5 py-3 text-xs text-gray-500 sm:flex-row sm:items-center sm:justify-between"><span>총 {visibleDbRows.length}개 행 · 페이지당 {DB_PAGE_SIZE}개 · 팀 수는 팀명 중복을 제외해 계산합니다.</span><div className="flex items-center gap-2"><button type="button" disabled={dbPage === 1} onClick={() => setDbPage((page) => Math.max(1, page - 1))} className="border border-gray-300 bg-white px-3 py-1.5 font-bold text-gray-700 disabled:cursor-not-allowed disabled:opacity-40">이전</button><span className="min-w-16 text-center font-bold text-gray-700">{dbPage} / {dbPageCount}</span><button type="button" disabled={dbPage === dbPageCount} onClick={() => setDbPage((page) => Math.min(dbPageCount, page + 1))} className="border border-gray-300 bg-white px-3 py-1.5 font-bold text-gray-700 disabled:cursor-not-allowed disabled:opacity-40">다음</button></div></div>
     </section>
 
     {rows.length > 0 && <section>
-      <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"><div><h2 className="font-bold">실제 비교 결과</h2><p className="text-xs text-gray-500">{fileName} · 변경 행을 누르면 달라진 필드만 확인할 수 있습니다.</p></div><div className="text-right"><button type="button" disabled={applicableCount === 0 || applying} onClick={() => setConfirmOpen(true)} className="bg-emerald-800 px-5 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600">DB 반영</button><p className="mt-1 text-xs font-medium text-gray-500">신규·변경 항목만 관리자 권한으로 반영됩니다.</p></div></div>
+      <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"><div><h2 className="font-bold">실제 비교 결과</h2><p className="text-xs text-gray-500">{fileName} · 변경 행을 누르면 달라진 필드만 확인할 수 있습니다.</p></div><div className="flex items-start gap-2"><button type="button" onClick={resetImport} className="border border-gray-300 bg-white px-4 py-2.5 text-sm font-bold text-gray-700">결과 닫기</button><div className="text-right"><button type="button" disabled={applicableCount === 0 || applying} onClick={() => setConfirmOpen(true)} className="bg-emerald-800 px-5 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600">DB 반영</button><p className="mt-1 text-xs font-medium text-gray-500">신규·변경 항목만 반영</p></div></div></div>
       <div className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
         <SummaryCard label="전체" value={summary.all} active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} />
         <SummaryCard label="신규" value={summary.new} active={statusFilter === 'new'} onClick={() => setStatusFilter('new')} />
@@ -186,5 +183,4 @@ export default function TeamsPage() {
 }
 
 function Metric({ label, value, warning = false }: { label: string; value: string; warning?: boolean }) { return <div className="border border-gray-200 bg-white p-4"><p className="text-xs font-bold text-gray-500">{label}</p><p className={`mt-2 text-2xl font-bold ${warning ? 'text-amber-700' : 'text-gray-950'}`}>{value}</p></div>; }
-function FlowStep({ number, title, description }: { number: string; title: string; description: string }) { return <div className="flex gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center bg-emerald-100 text-sm font-bold text-emerald-800">{number}</span><div><p className="font-bold">{title}</p><p className="mt-0.5 text-xs text-gray-500">{description}</p></div></div>; }
 function SummaryCard({ label, value, active, onClick }: { label: string; value: number; active: boolean; onClick: () => void }) { return <button type="button" onClick={onClick} className={`border p-4 text-left ${active ? 'border-emerald-700 bg-emerald-50' : 'border-gray-200 bg-white'}`}><p className="text-xs font-bold text-gray-500">{label}</p><p className="mt-1 text-xl font-bold">{value}건</p></button>; }
