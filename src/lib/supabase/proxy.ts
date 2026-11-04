@@ -10,14 +10,25 @@ export async function updateSession(request: NextRequest) {
       db: { schema: 'daesan' },
       cookies: {
         getAll: () => request.cookies.getAll(),
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet, headers) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           response = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+          Object.entries(headers).forEach(([key, value]) => response.headers.set(key, value));
         },
       },
     },
   );
+
+  const redirectWithSession = (url: URL) => {
+    const redirectResponse = NextResponse.redirect(url);
+    response.cookies.getAll().forEach((cookie) => redirectResponse.cookies.set(cookie));
+    response.headers.forEach((value, key) => {
+      if (key.toLowerCase() !== 'set-cookie') redirectResponse.headers.set(key, value);
+    });
+    return redirectResponse;
+  };
+
   const { data } = await supabase.auth.getClaims();
   const pathname = request.nextUrl.pathname;
   const publicPath = pathname === '/login' || pathname.startsWith('/auth/');
@@ -28,7 +39,7 @@ export async function updateSession(request: NextRequest) {
     loginUrl.pathname = '/login';
     loginUrl.search = '';
     loginUrl.searchParams.set('next', `${pathname}${request.nextUrl.search}`);
-    return NextResponse.redirect(loginUrl);
+    return redirectWithSession(loginUrl);
   }
   if (data?.claims && !apiPath) {
     const { data: profile } = await supabase
@@ -39,13 +50,15 @@ export async function updateSession(request: NextRequest) {
     const mustChangePassword = profile?.must_change_password === true;
 
     if (mustChangePassword && pathname !== '/auth/set-password') {
-      return NextResponse.redirect(new URL('/auth/set-password', request.url));
+      return redirectWithSession(new URL('/auth/set-password', request.url));
     }
     if (!mustChangePassword && pathname === '/auth/set-password') {
-      return NextResponse.redirect(new URL('/teams', request.url));
+      return redirectWithSession(new URL('/teams', request.url));
     }
     if (pathname === '/login') {
-      return NextResponse.redirect(new URL(mustChangePassword ? '/auth/set-password' : '/', request.url));
+      const requestedNext = request.nextUrl.searchParams.get('next');
+      const nextPath = requestedNext?.startsWith('/') && !requestedNext.startsWith('//') ? requestedNext : '/teams';
+      return redirectWithSession(new URL(mustChangePassword ? '/auth/set-password' : nextPath, request.url));
     }
   }
   return response;
