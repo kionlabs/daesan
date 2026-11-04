@@ -1,20 +1,20 @@
-# Supabase Storage 및 RLS(Row Level Security) 설정 가이드 (hrmm 커스텀 스키마 적용)
+# Supabase Storage 및 RLS(Row Level Security) 설정 가이드 (daesan 커스텀 스키마 적용)
 
-이 문서는 프로젝트 1단계의 Supabase 커스텀 스키마(`hrmm`) 활성화 설정, Storage 버킷 생성 및 민감 데이터 보호를 위한 RLS 정책 구성 방법을 설명합니다.
+이 문서는 프로젝트 1단계의 Supabase 커스텀 스키마(`daesan`) 활성화 설정, Storage 버킷 생성 및 민감 데이터 보호를 위한 RLS 정책 구성 방법을 설명합니다.
 
 ---
 
 ## 0. Supabase 대시보드 커스텀 스키마 활성화
 
-기본 `public` 스키마가 아닌 커스텀 스키마 `hrmm`에 있는 테이블들을 API로 접근하기 위해서는 Supabase 대시보드에서 스키마를 노출시켜야 합니다.
+기본 `public` 스키마가 아닌 커스텀 스키마 `daesan`에 있는 테이블들을 API로 접근하기 위해서는 Supabase 대시보드에서 스키마를 노출시켜야 합니다.
 
 ### 설정 단계
 1. **Supabase 대시보드**에 접속하여 프로젝트를 선택합니다.
 2. 좌측 네비게이션 하단의 **Project Settings** (톱니바퀴 아이콘) > **API** 메뉴로 이동합니다.
 3. **Exposed schemas** 항목을 찾습니다.
-4. 기존 `public` 외에 **`hrmm`** 스키마를 추가로 입력/선택합니다.
+4. 기존 `public` 외에 **`daesan`** 스키마를 추가로 입력/선택합니다.
 5. 변경 사항을 저장합니다.
-   - *이 설정을 거쳐야만 프런트엔드에서 `db: { schema: 'hrmm' }` 옵션을 사용해 테이블을 조회할 때 `406 Not Acceptable` 혹은 `schema "hrmm" does not exist` 등의 API 에러가 발생하지 않습니다.*
+   - *이 설정을 거쳐야만 프런트엔드에서 `db: { schema: 'daesan' }` 옵션을 사용해 테이블을 조회할 때 `406 Not Acceptable` 혹은 `schema "daesan" does not exist` 등의 API 에러가 발생하지 않습니다.*
 
 ---
 
@@ -34,7 +34,7 @@
 
 ## 2. Row Level Security (RLS) 및 민감 정보 보호 설정
 
-`hrmm.staffs.admin_notes` 및 `hrmm.markets.owner_notes`는 일반 직원이나 외부 사용자에게 노출되어서는 안 되는 **관리자 전용 메모**입니다. 
+`daesan.staffs.admin_notes` 및 `daesan.markets.owner_notes`는 일반 직원이나 외부 사용자에게 노출되어서는 안 되는 **관리자 전용 메모**입니다.
 PostgreSQL의 RLS는 기본적으로 **행(Row) 단위** 보안을 지원하므로, **열(Column) 단위**의 민감 정보를 제어하기 위해서는 다음 두 가지 방법 중 하나를 선택하여 구성해야 합니다.
 
 ### [추천] 방법 A: 민감 메모 테이블을 별도로 분리하여 RLS 적용
@@ -42,18 +42,18 @@ PostgreSQL의 RLS는 기본적으로 **행(Row) 단위** 보안을 지원하므�
 
 #### 1) 스키마 변경 (메모 테이블 분리)
 ```sql
--- 기존 hrmm.staffs 테이블에서 admin_notes 제거 후 아래 테이블 생성
-CREATE TABLE hrmm.staff_admin_notes (
+-- 기존 daesan.staffs 테이블에서 admin_notes 제거 후 아래 테이블 생성
+CREATE TABLE daesan.staff_admin_notes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    staff_id UUID UNIQUE NOT NULL REFERENCES hrmm.staffs(id) ON DELETE CASCADE,
+    staff_id UUID UNIQUE NOT NULL REFERENCES daesan.staffs(id) ON DELETE CASCADE,
     admin_notes TEXT,
     updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 기존 hrmm.markets 테이블에서 owner_notes 제거 후 아래 테이블 생성
-CREATE TABLE hrmm.market_owner_notes (
+-- 기존 daesan.markets 테이블에서 owner_notes 제거 후 아래 테이블 생성
+CREATE TABLE daesan.market_owner_notes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    market_id UUID UNIQUE NOT NULL REFERENCES hrmm.markets(id) ON DELETE CASCADE,
+    market_id UUID UNIQUE NOT NULL REFERENCES daesan.markets(id) ON DELETE CASCADE,
     owner_notes TEXT,
     updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -62,20 +62,21 @@ CREATE TABLE hrmm.market_owner_notes (
 #### 2) RLS 활성화 및 관리자만 조회 가능한 정책 적용
 ```sql
 -- RLS 활성화
-ALTER TABLE hrmm.staff_admin_notes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE hrmm.market_owner_notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE daesan.staff_admin_notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE daesan.market_owner_notes ENABLE ROW LEVEL SECURITY;
 
 -- 관리자(Admin) 권한을 가진 인증된 사용자만 조회/생성/수정/삭제 가능하도록 설정
--- (사용자의 metadata 혹은 custom claims에 'is_admin'이 true로 들어가 있다고 가정)
-CREATE POLICY "Allow admin access to staff notes" ON hrmm.staff_admin_notes
+CREATE POLICY "Allow admin access to staff notes" ON daesan.staff_admin_notes
     FOR ALL
     TO authenticated
-    USING ( (auth.jwt() -> 'user_metadata' ->> 'is_admin')::boolean = true );
+    USING ( (select private.is_admin()) )
+    WITH CHECK ( (select private.is_admin()) );
 
-CREATE POLICY "Allow admin access to market notes" ON hrmm.market_owner_notes
+CREATE POLICY "Allow admin access to market notes" ON daesan.market_owner_notes
     FOR ALL
     TO authenticated
-    USING ( (auth.jwt() -> 'user_metadata' ->> 'is_admin')::boolean = true );
+    USING ( (select private.is_admin()) )
+    WITH CHECK ( (select private.is_admin()) );
 ```
 
 ---
@@ -86,21 +87,21 @@ CREATE POLICY "Allow admin access to market notes" ON hrmm.market_owner_notes
 #### RLS 정책 적용 예시 SQL
 ```sql
 -- 1. 테이블 RLS 활성화
-ALTER TABLE hrmm.staffs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE hrmm.markets ENABLE ROW LEVEL SECURITY;
-ALTER TABLE hrmm.schedules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE daesan.staffs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE daesan.markets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE daesan.schedules ENABLE ROW LEVEL SECURITY;
 
 -- 2. Staffs 테이블 정책 설정
 -- 가) 관리자는 모든 직원의 정보를 조회하고 편집할 수 있습니다.
-CREATE POLICY "Admins can do everything on staffs" ON hrmm.staffs
+CREATE POLICY "Admins can do everything on staffs" ON daesan.staffs
     FOR ALL
     TO authenticated
-    USING ( (auth.jwt() -> 'user_metadata' ->> 'is_admin')::boolean = true )
-    WITH CHECK ( (auth.jwt() -> 'user_metadata' ->> 'is_admin')::boolean = true );
+    USING ( (select private.is_admin()) )
+    WITH CHECK ( (select private.is_admin()) );
 
 -- 나) 일반 직원은 자기 자신의 프로필 정보만 조회할 수 있고, admin_notes는 보이지 않도록 클라이언트에서 요청 시 필터링해야 합니다.
 -- (주의: 행 단위 RLS이므로 행 자체가 반환되면 admin_notes 컬럼 값도 함께 노출됩니다.)
-CREATE POLICY "Staffs can view their own profile" ON hrmm.staffs
+CREATE POLICY "Staffs can view their own profile" ON daesan.staffs
     FOR SELECT
     TO authenticated
     USING ( auth.uid() = id );
@@ -114,38 +115,37 @@ CREATE POLICY "Staffs can view their own profile" ON hrmm.staffs
 
 ## 3. Supabase Realtime(실시간 동기화) 활성화
 
-실시간 스케줄러 기능이 새로고침 없이 다른 브라우저 세션과 연동되기 위해선 Supabase Database의 Realtime 복제(Replication) 기능을 `hrmm.schedules` 테이블에 대해 활성화해야 합니다.
+실시간 스케줄러 기능이 새로고침 없이 다른 브라우저 세션과 연동되기 위해선 Supabase Database의 Realtime 복제(Replication) 기능을 `daesan.schedules` 테이블에 대해 활성화해야 합니다.
 
 ### 설정 방법
 1. **Supabase 대시보드**에 로그인합니다.
 2. 좌측 네비게이션 메뉴 중 **Database** (데이터베이스 실물 아이콘) 메뉴로 들어갑니다.
 3. 데이터베이스 설정 내 **Replication** 메뉴를 클릭합니다.
-4. **supabase_realtime** 복제 소스가 보이면 편집 또는 활성화 상태를 확인하고, 감시 대상 테이블 목록에 **`hrmm.schedules`** 테이블을 토글하여 켭니다.
+4. **supabase_realtime** 복제 소스가 보이면 편집 또는 활성화 상태를 확인하고, 감시 대상 테이블 목록에 **`daesan.schedules`** 테이블을 토글하여 켭니다.
    - *또는 SQL Editor에서 아래의 쿼리를 실행하여 직접 활성화할 수도 있습니다.*
 
 ```sql
--- hrmm.schedules 및 hrmm.waiting_pools 테이블에 대한 실시간 복제(Realtime) 강제 활성화 SQL
-alter publication supabase_realtime add table hrmm.schedules;
-alter publication supabase_realtime add table hrmm.waiting_pools;
+-- daesan.schedules 테이블에 대한 실시간 복제(Realtime) 강제 활성화 SQL
+alter publication supabase_realtime add table daesan.schedules;
 
--- hrmm.schedules 테이블 기간(Period) 단위 스키마 개편 SQL
-ALTER TABLE hrmm.schedules ADD COLUMN IF NOT EXISTS start_date DATE;
-ALTER TABLE hrmm.schedules ADD COLUMN IF NOT EXISTS end_date DATE;
-UPDATE hrmm.schedules SET start_date = schedule_date, end_date = schedule_date WHERE start_date IS NULL;
+-- daesan.schedules 테이블 기간(Period) 단위 스키마 개편 SQL
+ALTER TABLE daesan.schedules ADD COLUMN IF NOT EXISTS start_date DATE;
+ALTER TABLE daesan.schedules ADD COLUMN IF NOT EXISTS end_date DATE;
+UPDATE daesan.schedules SET start_date = schedule_date, end_date = schedule_date WHERE start_date IS NULL;
 ```
 5. 설정이 완료되면, 한 브라우저 창에서 직원을 배정할 때 다른 창의 스케줄판도 즉각적으로 실시간 동기화가 이뤄집니다.
 
 ---
 
-## 4. 52주 매출 관리 테이블 (`hrmm.revenues`) 설정
+## 4. 52주 매출 관리 테이블 (`daesan.revenues`) 설정
 
 직원별 52주 매출 데이터 저장 및 정산을 위해 Supabase SQL Editor에서 아래 쿼리를 실행해 테이블을 생성합니다.
 
 ```sql
-CREATE TABLE IF NOT EXISTS hrmm.revenues (
+CREATE TABLE IF NOT EXISTS daesan.revenues (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    staff_id UUID NOT NULL REFERENCES hrmm.staffs(id) ON DELETE CASCADE,
-    market_id UUID REFERENCES hrmm.markets(id) ON DELETE SET NULL,
+    staff_id UUID NOT NULL REFERENCES daesan.staffs(id) ON DELETE CASCADE,
+    market_id UUID REFERENCES daesan.markets(id) ON DELETE SET NULL,
     year INTEGER NOT NULL,
     week_number INTEGER NOT NULL CHECK (week_number BETWEEN 1 AND 53),
     period_text TEXT,
@@ -156,11 +156,16 @@ CREATE TABLE IF NOT EXISTS hrmm.revenues (
 );
 
 -- RLS 활성화 및 접근 권한 설정
-ALTER TABLE hrmm.revenues ENABLE ROW LEVEL SECURITY;
+ALTER TABLE daesan.revenues ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Allow public read access to revenues" ON hrmm.revenues
-    FOR SELECT USING (true);
+CREATE POLICY "Admins can read revenues" ON daesan.revenues
+    FOR SELECT
+    TO authenticated
+    USING ( (select private.is_admin()) );
 
-CREATE POLICY "Allow public write access to revenues" ON hrmm.revenues
-    FOR ALL USING (true);
+CREATE POLICY "Admins can write revenues" ON daesan.revenues
+    FOR ALL
+    TO authenticated
+    USING ( (select private.is_admin()) )
+    WITH CHECK ( (select private.is_admin()) );
 ```
