@@ -136,7 +136,7 @@ export default function TeamsPage() {
     <section className="mb-6 border border-gray-200 bg-white">
       <div className="border-b border-gray-200 p-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div><h2 className="font-bold text-gray-950">현재 DB 팀리스트</h2><p className="mt-1 text-sm text-gray-500">Excel `팀리스트`의 행 순서와 주요 컬럼을 가공하지 않고 표시합니다.</p></div>
+          <div><h2 className="font-bold text-gray-950">현재 DB 팀리스트</h2></div>
           <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_180px]">
             <input aria-label="팀 검색" value={teamSearch} onChange={(event) => { setTeamSearch(event.target.value); setDbPage(1); }} placeholder="팀명, 성명, 연락처 검색" className="h-10 border border-gray-300 px-3 text-sm outline-none focus:border-emerald-700" />
             <select aria-label="분류 필터" value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setDbPage(1); }} className="h-10 border border-gray-300 bg-white px-3 text-sm outline-none focus:border-emerald-700"><option value="all">전체 분류</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select>
